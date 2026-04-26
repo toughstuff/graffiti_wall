@@ -8,8 +8,9 @@ app.config["SECRET_KEY"] = "graffiti-wall-secret"
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 DB_PATH = "walls.db"
-
 WALLS = ["Wall 1", "Wall 2", "Wall 3", "Wall 4", "Wall 5"]
+
+online_users = 0
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -49,6 +50,18 @@ def clear_wall(wall):
 @app.route("/")
 def index():
     return render_template("index.html", walls=WALLS)
+
+@socketio.on("connect")
+def handle_connect():
+    global online_users
+    online_users += 1
+    emit("user_count", {"count": online_users}, broadcast=True)
+
+@socketio.on("disconnect")
+def handle_disconnect():
+    global online_users
+    online_users = max(0, online_users - 1)
+    emit("user_count", {"count": online_users}, broadcast=True)
 
 @socketio.on("join_wall")
 def handle_join(data):
