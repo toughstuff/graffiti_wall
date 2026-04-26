@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Graffiti Wall</title>
+    <link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <style>
+        :root {
+            --bg: #f5f0e8;
+            --ink: #1a1a1a;
+            --accent: #e63946;
+            --tab-bg: #e8e3db;
+            --tab-active: #ffffff;
+            --toolbar-bg: #1a1a1a;
+            --toolbar-text: #f5f0e8;
+            --shadow: 2px 2px 0px #1a1a1a;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; touch-action: none; }
+
+        body {
+            background: var(--bg);
+            font-family: 'DM Mono', monospace;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            background: var(--toolbar-bg);
+            color: var(--toolbar-text);
+            padding: 10px 16px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            border-bottom: 3px solid var(--ink);
+            flex-shrink: 0;
+        }
+
+        .header-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        h1 {
+            font-family: 'Permanent Marker', cursive;
+            font-size: 1.6rem;
+            color: var(--accent);
+            letter-spacing: 1px;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        .wall-tabs {
+            display: flex;
+            gap: 4px;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+
+        .wall-tabs::-webkit-scrollbar { display: none; }
+
+        .tab {
+            padding: 6px 14px;
+            background: #333;
+            color: #aaa;
+            border: 2px solid #444;
+            border-bottom: none;
+            border-radius: 6px 6px 0 0;
+            font-family: 'DM Mono', monospace;
+            font-size: 0.75rem;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.15s;
+        }
+
+        .tab.active {
+            background: var(--bg);
+            color: var(--ink);
+            border-color: var(--bg);
+        }
+
+        .toolbar {
+            background: var(--toolbar-bg);
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            border-bottom: 3px solid var(--ink);
+            flex-shrink: 0;
+        }
+
+        .tool-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tool-label {
+            font-size: 0.7rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .tool-btn {
+            padding: 6px 12px;
+            border: 2px solid #444;
+            border-radius: 4px;
+            background: #333;
+            color: #eee;
+            font-family: 'DM Mono', monospace;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+
+        .tool-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+
+        .tool-btn:active { transform: scale(0.95); }
+
+        input[type="color"] {
+            width: 36px;
+            height: 36px;
+            border: 2px solid #444;
+            border-radius: 4px;
+            background: none;
+            cursor: pointer;
+            padding: 2px;
+        }
+
+        input[type="range"] {
+            width: 80px;
+            accent-color: var(--accent);
+        }
+
+        .size-preview {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .size-dot {
+            background: #fff;
+            border-radius: 50%;
+            transition: all 0.1s;
+        }
+
+        .clear-btn {
+            margin-left: auto;
+            padding: 6px 14px;
+            border: 2px solid var(--accent);
+            border-radius: 4px;
+            background: transparent;
+            color: var(--accent);
+            font-family: 'DM Mono', monospace;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .clear-btn:hover {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        #canvas-container {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            background: #fff;
+            border: none;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+
+        .users-badge {
+            font-size: 0.7rem;
+            color: #888;
+            font-family: 'DM Mono', monospace;
+        }
+
+        .dot-online {
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            background: #2ecc71;
+            border-radius: 50%;
+            margin-right: 4px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="header-top">
+        <h1>Graffiti Wall</h1>
+        <div class="users-badge"><span class="dot-online"></span>Live</div>
+    </div>
+    <div class="wall-tabs">
+        {% for wall in walls %}
+        <div class="tab {% if loop.first %}active{% endif %}" data-wall="{{ wall }}" onclick="switchWall('{{ wall }}', this)">{{ wall }}</div>
+        {% endfor %}
+    </div>
+</header>
+
+<div class="toolbar">
+    <div class="tool-group">
+        <button class="tool-btn active" id="btn-pen" onclick="setTool('pen')">Pen</button>
+        <button class="tool-btn" id="btn-eraser" onclick="setTool('eraser')">Eraser</button>
+    </div>
+    <div class="tool-group">
+        <span class="tool-label">Color</span>
+        <input type="color" id="color-picker" value="#e63946" oninput="setColor(this.value)">
+    </div>
+    <div class="tool-group">
+        <span class="tool-label">Size</span>
+        <input type="range" id="brush-size" min="1" max="40" value="6" oninput="setSize(this.value)">
+        <div class="size-preview">
+            <div class="size-dot" id="size-dot" style="width:6px;height:6px;"></div>
+        </div>
+    </div>
+    <button class="clear-btn" onclick="clearWall()">Clear</button>
+</div>
+
+<div id="canvas-container">
+    <canvas id="canvas"></canvas>
+</div>
+
+<script>
+    const socket = io();
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const container = document.getElementById("canvas-container");
+
+    let currentWall = "{{ walls[0] }}";
+    let tool = "pen";
+    let color = "#e63946";
+    let brushSize = 6;
+    let drawing = false;
+    let lastX = 0, lastY = 0;
+
+    function resizeCanvas() {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight;
+        ctx.putImageData(imageData, 0, 0);
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+    }
+
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    // --- Tool controls ---
+    function setTool(t) {
+        tool = t;
+        document.getElementById("btn-pen").classList.toggle("active", t === "pen");
+        document.getElementById("btn-eraser").classList.toggle("active", t === "eraser");
+        canvas.style.cursor = t === "eraser" ? "cell" : "crosshair";
+    }
+
+    function setColor(c) { color = c; }
+
+    function setSize(s) {
+        brushSize = parseInt(s);
+        const dot = document.getElementById("size-dot");
+        dot.style.width = Math.min(s, 24) + "px";
+        dot.style.height = Math.min(s, 24) + "px";
+    }
+
+    // --- Wall switching ---
+    function switchWall(wall, el) {
+        currentWall = wall;
+        document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+        el.classList.add("active");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        socket.emit("join_wall", { wall });
+    }
+
+    // --- Drawing ---
+    function getPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const src = e.touches ? e.touches[0] : e;
+        return {
+            x: (src.clientX - rect.left) * (canvas.width / rect.width),
+            y: (src.clientY - rect.top) * (canvas.height / rect.height)
+        };
+    }
+
+    function startDraw(e) {
+        e.preventDefault();
+        drawing = true;
+        const pos = getPos(e);
+        lastX = pos.x;
+        lastY = pos.y;
+    }
+
+    function draw(e) {
+        e.preventDefault();
+        if (!drawing) return;
+        const pos = getPos(e);
+        const stroke = {
+            x0: lastX, y0: lastY,
+            x1: pos.x, y1: pos.y,
+            color: tool === "eraser" ? "#ffffff" : color,
+            size: tool === "eraser" ? brushSize * 3 : brushSize,
+            cw: canvas.width,
+            ch: canvas.height
+        };
+        drawStroke(stroke);
+        socket.emit("draw", { wall: currentWall, stroke });
+        lastX = pos.x;
+        lastY = pos.y;
+    }
+
+    function endDraw(e) {
+        e.preventDefault();
+        drawing = false;
+    }
+
+    canvas.addEventListener("mousedown", startDraw);
+    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("mouseup", endDraw);
+    canvas.addEventListener("mouseleave", endDraw);
+    canvas.addEventListener("touchstart", startDraw, { passive: false });
+    canvas.addEventListener("touchmove", draw, { passive: false });
+    canvas.addEventListener("touchend", endDraw, { passive: false });
+
+    function drawStroke(stroke) {
+        const scaleX = canvas.width / stroke.cw;
+        const scaleY = canvas.height / stroke.ch;
+        ctx.beginPath();
+        ctx.moveTo(stroke.x0 * scaleX, stroke.y0 * scaleY);
+        ctx.lineTo(stroke.x1 * scaleX, stroke.y1 * scaleY);
+        ctx.strokeStyle = stroke.color;
+        ctx.lineWidth = stroke.size;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.stroke();
+    }
+
+    function clearWall() {
+        if (!confirm("Clear this wall?")) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        socket.emit("clear", { wall: currentWall });
+    }
+
+    // --- Socket events ---
+    socket.on("load_strokes", (data) => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        data.strokes.forEach(drawStroke);
+    });
+
+    socket.on("draw", (data) => {
+        drawStroke(data.stroke);
+    });
+
+    socket.on("clear", () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    });
+
+    // Join default wall on load
+    socket.emit("join_wall", { wall: currentWall });
+</script>
+</body>
+</html>
