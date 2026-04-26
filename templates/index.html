@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Graffiti Wall</title>
     <link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js">
+        socket.on("user_count", (data) => {
+            document.getElementById("user-count").textContent = data.count;
+        });
+    </script>
     <style>
         :root {
             --bg: #f5f0e8;
@@ -216,7 +220,7 @@
 <header>
     <div class="header-top">
         <h1>Graffiti Wall</h1>
-        <div class="users-badge"><span class="dot-online"></span>Live</div>
+        <div class="users-badge"><span class="dot-online"></span><span id="user-count">1</span> online</div>
     </div>
     <div class="wall-tabs">
         {% for wall in walls %}
